@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 The Android Open Source Project
+ * This code has been modified.  Portions copyright (C) 2012, ParanoidAndroid Project.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +39,7 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.storage.StorageManager;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
@@ -123,6 +125,9 @@ public abstract class BaseStatusBar extends SystemUI implements
 
     protected FrameLayout mStatusBarContainer;
 
+    // storage
+    private StorageManager mStorageManager;
+
     // UI-specific methods
 
     /**
@@ -131,9 +136,30 @@ public abstract class BaseStatusBar extends SystemUI implements
      */
     protected abstract void createAndAddWindows();
 
+    public abstract void showClock(boolean show);
+
     protected Display mDisplay;
     private IWindowManager mWindowManager;
     private boolean mDeviceProvisioned = false;
+
+    class StatusbarObserver extends ContentObserver {
+        StatusbarObserver(Handler handler) {
+            super(handler);
+        }
+
+        void observe() {
+            ContentResolver resolver = mContext.getContentResolver();
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.STATUS_BAR_CLOCK), false, this);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.STATUS_BAR_CENTER_CLOCK), false, this);
+        }
+
+        @Override
+        public void onChange(boolean selfChange) {
+            showClock(true);
+        }
+    }
 
     public IWindowManager getWindowManager() {
         return mWindowManager;
@@ -196,8 +222,8 @@ public abstract class BaseStatusBar extends SystemUI implements
         mDisplay = ((WindowManager)mContext.getSystemService(Context.WINDOW_SERVICE))
                 .getDefaultDisplay();
 
-        mTabletui = Settings.System.getBoolean(mContext.getContentResolver(),
-                        Settings.System.MODE_TABLET_UI, false);
+        StatusbarObserver StatusbarObserver = new StatusbarObserver(new Handler());
+        StatusbarObserver.observe();
 
         mNavRingAmount = Settings.System.getInt(mContext.getContentResolver(),
                          Settings.System.SYSTEMUI_NAVRING_AMOUNT, 1);
@@ -206,6 +232,11 @@ public abstract class BaseStatusBar extends SystemUI implements
         mContext.getContentResolver().registerContentObserver(
                 Settings.Secure.getUriFor(Settings.Secure.DEVICE_PROVISIONED), true,
                 mProvisioningObserver);
+
+        // storage
+        mStorageManager = (StorageManager) mContext.getSystemService(Context.STORAGE_SERVICE);
+        mStorageManager.registerListener(
+                new com.android.systemui.usb.StorageNotification(mContext));
 
         mWindowManager = IWindowManager.Stub.asInterface(
                 ServiceManager.getService(Context.WINDOW_SERVICE));
