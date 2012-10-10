@@ -2434,11 +2434,6 @@ public final class Settings {
          */
         public static final String WIDGET_BUTTONS_TABLET = "expanded_widget_buttons_tablet";
 
-		/**
-         * Statusbar layout
-         * @hide
-         */
-        public static final String STATUS_BAR_LAYOUT = "statusbar_layout";
 
         /**
          * Navigation bar, whether to show or hide
