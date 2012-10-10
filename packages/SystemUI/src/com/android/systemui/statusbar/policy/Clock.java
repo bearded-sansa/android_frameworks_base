@@ -1,6 +1,5 @@
  	/*
  * Copyright (C) 2006 The Android Open Source Project
- * This code has been modified.  Portions copyright (C) 2012, ParanoidAndroid Project.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +23,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
-import android.database.ContentObserver;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -80,28 +78,6 @@ public class Clock extends TextView {
 
     protected int mClockColor;
 
-    private boolean mShowClock;
-    private boolean mShowAlways;
-
-    Handler mHandler;
-
-    class SettingsObserver extends ContentObserver {
-        SettingsObserver(Handler handler) {
-            super(handler);
-        }
-
-        void observe() {
-            ContentResolver resolver = mContext.getContentResolver();
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.STATUS_BAR_AM_PM), false, this);
-        }
-
-        @Override
-        public void onChange(boolean selfChange) {
-            updateSettings();
-        }
-    }
-
     public Clock(Context context) {
         this(context, null);
     }
@@ -112,14 +88,6 @@ public class Clock extends TextView {
 
     public Clock(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
-        
-        TypedArray a = context.obtainStyledAttributes(attrs, com.android.systemui.R.styleable.Clock, defStyle, 0);
-        mShowAlways = a.getBoolean(com.android.systemui.R.styleable.Clock_showAlways, false);
-
-        mHandler = new Handler();
-        SettingsObserver settingsObserver = new SettingsObserver(mHandler);
-        settingsObserver.observe();
-        updateSettings();
     }
 
     @Override
@@ -149,7 +117,12 @@ public class Clock extends TextView {
         mCalendar = Calendar.getInstance(TimeZone.getDefault());
 
         // Make sure we update to the current time
-        updateClock();
+        //no need to updateClock here, since we call updateSettings() which has updateClock();
+        //updateClock();
+        
+        SettingsObserver settingsObserver = new SettingsObserver(new Handler());
+        settingsObserver.observe();
+        updateSettings();
     }
 
     @Override
@@ -339,9 +312,7 @@ public class Clock extends TextView {
         }
 
         updateClockVisibility();
-        if (mAttached) {
-            updateClock();
-        }
+        updateClock();
     }
 
     protected void updateClockVisibility() {
