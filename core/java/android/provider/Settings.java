@@ -2434,7 +2434,25 @@ public final class Settings {
          */
         public static final String WIDGET_BUTTONS_TABLET = "expanded_widget_buttons_tablet";
 
+		/**
+         * Statusbar layout
+         * @hide
+         */
+        public static final String STATUS_BAR_LAYOUT = "statusbar_layout";
+
         /**
+         * Navigation bar, whether to show or hide
+         * @hide
+         */
+        public static final String NAV_BAR_STATUS = "nav_bar_status";
+
+        /**
+         * Navigation bar, separate menu button in TabUI, whether to show or hide
+         * @hide
+         */
+        public static final String NAV_BAR_TABUI_MENU = "nav_bar_tabui_menu";        
+
+		/**
 
          * Navigation controls to Use
          *
