@@ -94,6 +94,7 @@ import android.os.SystemProperties;
 import android.os.TokenWatcher;
 import android.os.Trace;
 import android.provider.Settings;
+import android.util.ExtendedPropertiesUtils;
 import android.util.DisplayMetrics;
 import android.util.EventLog;
 import android.util.FloatMath;
@@ -6430,13 +6431,7 @@ public class WindowManagerService extends IWindowManager.Stub
         sl = reduceConfigLayout(sl, Surface.ROTATION_90, density, unrotDh, unrotDw);
         sl = reduceConfigLayout(sl, Surface.ROTATION_180, density, unrotDw, unrotDh);
         sl = reduceConfigLayout(sl, Surface.ROTATION_270, density, unrotDh, unrotDw);
-        // tabletui switch
-        boolean mTabletui = Settings.System.getBoolean(mContext.getContentResolver(), Settings.System.MODE_TABLET_UI, false);
-            if (!mTabletui) {
-                outConfig.smallestScreenWidthDp = (int)(mSmallestDisplayWidth / density);
-            } else {
-                outConfig.smallestScreenWidthDp = 721;
-            }
+        outConfig.smallestScreenWidthDp = (int)(mSmallestDisplayWidth / density);
         outConfig.screenLayout = sl;
     }
 
@@ -9599,6 +9594,11 @@ public class WindowManagerService extends IWindowManager.Stub
     @Override
     public boolean hasNavigationBar() {
         return mPolicy.hasNavigationBar();
+    }
+
+    @Override
+    public boolean hasHardwareKeys() {
+        return mPolicy.hasHardwareKeys();
     }
 
     public void lockNow() {
