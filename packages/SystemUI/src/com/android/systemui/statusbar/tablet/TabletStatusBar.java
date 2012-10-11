@@ -145,9 +145,16 @@ public class TabletStatusBar extends BaseStatusBar implements
     View mNotificationArea;
     View mNotificationTrigger;
     NotificationIconArea mNotificationIconArea;
+    ViewGroup mNavigationArea;
 
     boolean mNotificationDNDMode;
     NotificationData.Entry mNotificationDNDDummyEntry;
+
+    ImageView mBackButton;
+    View mHomeButton;
+    View mMenuButton;
+    View mRecentButton;
+    private boolean mAltBackButtonEnabledForIme;
 
     ViewGroup mFeedbackIconArea; // notification icons, IME icon, compat icon
     InputMethodButton mInputMethodSwitchButton;
@@ -670,6 +677,10 @@ public class TabletStatusBar extends BaseStatusBar implements
             public void startTransition(LayoutTransition transition, ViewGroup container,
                     View view, int transitionType) {}
         });
+        mNavigationArea.setLayoutTransition(lt);
+        // no multi-touch on the nav buttons
+        mNavigationArea.setMotionEventSplittingEnabled(false);
+        mNavigationArea.setVisibility(Settings.System.getInt(mContext.getContentResolver(), Settings.System.NAV_BAR_STATUS, mContext.getResources().getBoolean(com.android.internal.R.bool.config_showNavigationBar) ? 1 : 0) == 1 ? View.VISIBLE : View.GONE);
 
         // The bar contents buttons
         mFeedbackIconArea = (ViewGroup)sb.findViewById(R.id.feedbackIconArea);
@@ -1219,10 +1230,29 @@ public class TabletStatusBar extends BaseStatusBar implements
         }
     }
 
+    public void setLightsOn(boolean on) {
+        // Policy note: if the frontmost activity needs the menu key, we assume it is a legacy app
+        // that can't handle lights-out mode.
+        if (mMenuButton.getVisibility() == View.VISIBLE) {
+            on = true;
+        }
+
+        Slog.v(TAG, "setLightsOn(" + on + ")");
+        if (on) {
+            setSystemUiVisibility(0, View.SYSTEM_UI_FLAG_LOW_PROFILE);
+        } else {
+            setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE, View.SYSTEM_UI_FLAG_LOW_PROFILE);
+        }
+    }
+
     public void topAppWindowChanged(boolean showMenu) {
         if (DEBUG) {
             Slog.d(TAG, (showMenu?"showing":"hiding") + " the MENU button");
         }
+        mMenuButton.setVisibility(showMenu ? View.VISIBLE : View.GONE);
+
+        // See above re: lights-out policy for legacy apps.
+        if (showMenu) setLightsOn(true);
 
         mCompatModeButton.refresh();
         if (mCompatModeButton.getVisibility() == View.VISIBLE) {
