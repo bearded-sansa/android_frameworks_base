@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * This code has been modified.  Portions copyright (C) 2012, ParanoidAndroid Project.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -90,6 +91,8 @@ public class RecentsHorizontalScrollView extends HorizontalScrollView
         setLayoutTransition(null);
 
         mLinearLayout.removeAllViews();
+        mCallback.clear();
+
         Iterator<View> recycledViews = mRecycledViews.iterator();
         for (int i = 0; i < mAdapter.getCount(); i++) {
             View old = null;
@@ -100,6 +103,7 @@ public class RecentsHorizontalScrollView extends HorizontalScrollView
             }
 
             final View view = mAdapter.getView(i, old, mLinearLayout);
+            mCallback.addContainer(view);
 
             if (mPerformanceHelper != null) {
                 mPerformanceHelper.addViewCallback(view);
@@ -145,6 +149,7 @@ public class RecentsHorizontalScrollView extends HorizontalScrollView
             final View appTitle = view.findViewById(R.id.app_label);
             appTitle.setContentDescription(" ");
             appTitle.setOnTouchListener(noOpListener);
+
             mLinearLayout.addView(view);
         }
         setLayoutTransition(transitioner);
@@ -381,5 +386,6 @@ public class RecentsHorizontalScrollView extends HorizontalScrollView
 
     public void setCallback(RecentsCallback callback) {
         mCallback = callback;
+        mCallback.setScrollView(this);
     }
 }

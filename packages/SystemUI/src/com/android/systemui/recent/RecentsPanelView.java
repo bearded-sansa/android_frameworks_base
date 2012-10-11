@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 The Android Open Source Project
+ * This code has been modified.  Portions copyright (C) 2012, ParanoidAndroid Project.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +22,13 @@ import android.animation.LayoutTransition;
 import android.app.ActivityManager;
 import android.app.ActivityManagerNative;
 import android.app.ActivityOptions;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
+import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.graphics.Rect;
@@ -33,11 +36,14 @@ import android.graphics.Shader.TileMode;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.Handler;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.provider.Settings;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.util.DisplayMetrics;
+import android.util.ExtendedPropertiesUtils;
 import android.view.Display;
 import android.view.KeyEvent;
 import android.view.IWindowManager;
@@ -54,9 +60,11 @@ import android.widget.AdapterView.OnItemClickListener;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.ImageView.ScaleType;
 import android.widget.PopupMenu;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.android.systemui.R;
@@ -67,6 +75,7 @@ import com.android.systemui.statusbar.tablet.StatusBarPanel;
 import com.android.systemui.statusbar.tablet.TabletStatusBar;
 
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 
 public class RecentsPanelView extends FrameLayout implements OnItemClickListener, RecentsCallback,
         StatusBarPanel, Animator.AnimatorListener, View.OnTouchListener {
@@ -78,6 +87,7 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
     private View mRecentsScrim;
     private View mRecentsNoApps;
     private ViewGroup mRecentsContainer;
+    private Object mScrollView;
     private StatusBarTouchProxy mStatusBarTouchProxy;
 
     private boolean mShowing;
@@ -88,11 +98,13 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
     private Choreographer mChoreo;
     OnRecentsPanelVisibilityChangedListener mVisibilityChangedListener;
 
+    ImageView mClearRecents;
     ImageView mPlaceholderThumbnail;
     View mTransitionBg;
     boolean mHideRecentsAfterThumbnailScaleUpStarted;
 
     private Button mRecentsKillAllButton;
+	Handler mTaskHandler;
 
     private RecentTasksLoader mRecentTasksLoader;
     private ArrayList<TaskDescription> mRecentTaskDescriptions;
@@ -100,10 +112,12 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
     private boolean mRecentTasksDirty = true;
     private TaskDescriptionAdapter mListAdapter;
     private int mThumbnailWidth;
+    private int mThumbnailHeight;
     private boolean mFitThumbnailToXY;
     private int mRecentItemLayoutId;
     private boolean mFirstScreenful = true;
     private boolean mHighEndGfx;
+    private int mAndroidDpi = DisplayMetrics.DENSITY_DEVICE;
 
     public static interface OnRecentsPanelVisibilityChangedListener {
         public void onRecentsPanelVisibilityChanged(boolean visible);
@@ -162,6 +176,10 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
             holder.thumbnailView = convertView.findViewById(R.id.app_thumbnail);
             holder.thumbnailViewImage =
                     (ImageView) convertView.findViewById(R.id.app_thumbnail_image);
+
+            holder.thumbnailViewImage.getLayoutParams().width = mThumbnailWidth;
+            holder.thumbnailViewImage.getLayoutParams().height = mThumbnailHeight;
+
             // If we set the default thumbnail now, we avoid an onLayout when we update
             // the thumbnail later (if they both have the same dimensions)
             if (mRecentTasksLoader != null) {
@@ -233,6 +251,7 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
     public RecentsPanelView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
         mContext = context;
+        mTaskHandler = new Handler();
         updateValuesFromResources();
 
         TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.RecentsPanelView,
@@ -320,6 +339,12 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
             // if there are no apps, either bring up a "No recent apps" message, or just
             // quit early
             boolean noApps = !mFirstScreenful && (mRecentTaskDescriptions.size() == 0);
+
+            // if no apps found, we just hide the "Clear" button as it's not needed
+            if(mClearRecents != null){
+                mClearRecents.setVisibility(noApps ? View.GONE : View.VISIBLE);
+            }
+
             if (mRecentsNoApps != null) {
                 mRecentsNoApps.setAlpha(1f);
                 mRecentsNoApps.setVisibility(noApps ? View.VISIBLE : View.INVISIBLE);
@@ -463,9 +488,16 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
 
     public void updateValuesFromResources() {
         final Resources res = mContext.getResources();
-        mThumbnailWidth = Math.round(res.getDimension(R.dimen.status_bar_recents_thumbnail_width));
+        mAndroidDpi = ExtendedPropertiesUtils.getActualProperty("com.android.systemui.dpi");
+        mThumbnailWidth = Math.round((float)res.getDimension(R.dimen.status_bar_recents_thumbnail_width) * 
+                DisplayMetrics.DENSITY_DEVICE / mAndroidDpi);
+        mThumbnailHeight = Math.round((float)res.getDimension(R.dimen.status_bar_recents_thumbnail_height) * 
+                DisplayMetrics.DENSITY_DEVICE / mAndroidDpi);
+
         mFitThumbnailToXY = res.getBoolean(R.bool.config_recents_thumbnail_image_fits_to_xy);
     }
+
+    protected static ArrayList<View> mViewContainer = new ArrayList();
 
     @Override
     protected void onFinishInflate() {
@@ -487,6 +519,45 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
         mRecentsScrim = findViewById(R.id.recents_bg_protect);
         mRecentsNoApps = findViewById(R.id.recents_no_apps);
         mChoreo = new Choreographer(this, mRecentsScrim, mRecentsContainer, mRecentsNoApps, this);
+
+        mClearRecents = (ImageView) findViewById(R.id.recents_clear);
+        if (mClearRecents != null){
+            mClearRecents.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    new Thread(new Runnable(){
+                        public void run(){
+                            if(mScrollView instanceof ScrollView){
+                                ((ScrollView) mScrollView).smoothScrollTo(0,0);
+                            } else if(mScrollView instanceof HorizontalScrollView) {
+                                ((HorizontalScrollView) mScrollView).smoothScrollTo(0,0);
+                            }
+
+                            try{
+                                for (final View child : mViewContainer){
+                                    mTaskHandler.post(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            mRecentsContainer.removeViewInLayout(child);
+                                        }
+                                    });
+
+                                    // Add a small delay before of removing next app
+                                    Thread.sleep(150);
+                                }
+                            } catch (ConcurrentModificationException e){
+                                // User pressed back key before animation finished. This is not
+                                // such a good idea, and we can't deal with it on any other way,
+                                // so we just interrupt the process instead of crashing.
+                            } catch (InterruptedException ie){
+                                // User will see the app fading instantly after the previous
+                                // one. This will probably never happen
+                            }
+                        }
+                    }).start();
+                }
+            });
+        }
 
         if (mRecentsScrim != null) {
             Display d = ((WindowManager)mContext.getSystemService(Context.WINDOW_SERVICE))
@@ -562,6 +633,7 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
             // Should remove the default image in the frame
             // that this now covers, to improve scrolling speed.
             // That can't be done until the anim is complete though.
+            thumbnail.setDensity(mAndroidDpi);
             h.thumbnailViewImage.setImageBitmap(thumbnail);
 
             // scale the image to fill the full width of the ImageView. do this only if
@@ -674,6 +746,7 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
                 onTasksLoaded(recentTasksList);
             } else {
                 mFirstScreenful = true;
+                clearRecentTasksList();
                 mRecentTasksLoader.loadTasksInBackground();
             }
             mRecentTasksDirty = false;
@@ -788,7 +861,8 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
         ActivityOptions opts = ActivityOptions.makeDelayedThumbnailScaleUpAnimation(
                 holder.thumbnailViewImage, bm, 0, 0,
                 new ActivityOptions.OnAnimationStartedListener() {
-                    @Override public void onAnimationStarted() {
+                    @Override
+                    public void onAnimationStarted() {
                         mThumbnailScaleUpStarted = true;
                         if (!mHighEndGfx) {
                             mPlaceholderThumbnail.setVisibility(INVISIBLE);
@@ -847,10 +921,14 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
             hide(false);
         }
 
-        // Currently, either direction means the same thing, so ignore direction and remove
-        // the task.
         final ActivityManager am = (ActivityManager)
                 mContext.getSystemService(Context.ACTIVITY_SERVICE);
+        removeTask(am, ad);
+    }
+
+    private void removeTask(ActivityManager am, TaskDescription ad){
+        // Currently, either direction means the same thing, so ignore direction and remove
+        // the task.
         if (am != null) {
             am.removeTask(ad.persistentTaskId, ActivityManager.REMOVE_TASK_KILL_PROCESS);
 
@@ -877,6 +955,10 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
         }
     }
 
+    public void setScrollView(Object scrollView){
+        mScrollView = scrollView;
+    }
+
     public void handleLongPress(
             final View selectedView, final View anchorView, final View thumbnailView) {
         thumbnailView.setSelected(true);
@@ -897,6 +979,24 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
                     } else {
                         throw new IllegalStateException("Oops, no tag on view " + selectedView);
                     }
+                } else if (item.getItemId() == R.id.recent_hybrid_item) {
+                    ViewHolder viewHolder = (ViewHolder) selectedView.getTag();
+                    if (viewHolder != null) {
+                        final TaskDescription ad = viewHolder.taskDescription;
+                        ApplicationInfo appInfo = ExtendedPropertiesUtils.getAppInfoFromPackageName(ad.packageName);
+                        if (appInfo != null) {
+                            Intent intent = new Intent("android.intent.action.MAIN");
+                            intent.putExtra("package", ad.packageName);
+                            intent.putExtra("appname", ad.getLabel().toString());
+                            intent.putExtra("filename", appInfo.sourceDir);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            intent.setComponent(new ComponentName("com.paranoid.preferences", 
+                                    "com.paranoid.preferences.hybrid.ViewPagerActivity"));
+                            getContext().startActivity(intent);
+                            hide(true);
+                        }
+                    }
                 } else {
                     return false;
                 }
@@ -911,6 +1011,14 @@ public class RecentsPanelView extends FrameLayout implements OnItemClickListener
         });
         popup.show();
     }
+
+	public void addContainer(View container){
+        mViewContainer.add(container);
+    }
+
+    public void clear(){
+        mViewContainer.clear();
+    }	
 
     private void killAllRecentApps(){
         final ActivityManager am = (ActivityManager)
